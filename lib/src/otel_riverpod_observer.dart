@@ -64,8 +64,7 @@ final class OTelRiverpodObserver extends ProviderObserver {
     this.recordValues = false,
     this.recordUpdates = true,
     this.valueAttributeMaxLength = 256,
-  }) : _tracer = tracer ??
-            OTel.tracerProvider().getTracer('otel_riverpod');
+  }) : _tracer = tracer ?? OTel.tracerProvider().getTracer('otel_riverpod');
 
   final Tracer _tracer;
 

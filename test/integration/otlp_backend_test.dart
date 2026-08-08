@@ -2,15 +2,15 @@
 // Copyright 2025, Mindful Software LLC, All rights reserved.
 
 /// Integration test: drive a few Riverpod events through the observer
-/// against a real OTLP endpoint, then poll Tempo's HTTP API to verify
+/// against a real OTLP endpoint, then poll the trace query API to verify
 /// the spans arrived with the expected `riverpod.*` semconv attributes.
 ///
-/// Skipped when no LGTM stack is reachable. Bring one up first:
-///   docker compose -f tool/lgtm/docker-compose.yml up -d
+/// Skipped when no OTLP backend is reachable. Bring one up first:
+///   any OTLP-compatible backend exposing a trace-by-id query API on :3200
 ///
 /// Env vars:
-///   LGTM_OTLP_ENDPOINT — OTLP/HTTP endpoint (default http://localhost:4318)
-///   LGTM_TEMPO_URL    — Tempo HTTP API base (default http://localhost:3200)
+///   OTLP_ENDPOINT — OTLP/HTTP endpoint (default http://localhost:4318)
+///   TRACE_API_URL — trace query API base (default http://localhost:3200)
 library;
 
 import 'dart:async';
@@ -24,23 +24,23 @@ import 'package:test/test.dart';
 
 const _defaultOtlp = 'http://localhost:4318';
 const _defaultOtlpPort = 4318;
-const _defaultTempo = 'http://localhost:3200';
+const _defaultTraceApi = 'http://localhost:3200';
 
 void main() {
-  group('LGTM end-to-end', () {
-    final otlpEndpoint =
-        Platform.environment['LGTM_OTLP_ENDPOINT'] ?? _defaultOtlp;
-    final tempoUrl = Platform.environment['LGTM_TEMPO_URL'] ?? _defaultTempo;
+  group('OTLP backend end-to-end', () {
+    final otlpEndpoint = Platform.environment['OTLP_ENDPOINT'] ?? _defaultOtlp;
+    final traceApiUrl =
+        Platform.environment['TRACE_API_URL'] ?? _defaultTraceApi;
 
-    test('Riverpod observer spans appear in Tempo', () async {
-      // Skip unless BOTH Tempo's HTTP API and the OTLP port are
-      // reachable — Tempo /ready alone can match an unrelated service.
-      final tempoOk = await _tempoReachable(tempoUrl);
+    test('Riverpod observer spans appear in the trace backend', () async {
+      // Skip unless BOTH the trace query API and the OTLP port are
+      // reachable — /ready alone can match an unrelated service.
+      final traceApiOk = await _traceApiReachable(traceApiUrl);
       final otlpOk = await _portOpen(otlpEndpoint);
-      if (!tempoOk || !otlpOk) {
+      if (!traceApiOk || !otlpOk) {
         markTestSkipped(
-          'LGTM not reachable (tempo=$tempoOk otlp=$otlpOk) — start it '
-          'with `docker compose -f tool/lgtm/docker-compose.yml up -d` and '
+          'Backend not reachable (traces=$traceApiOk otlp=$otlpOk) — start '
+          'any OTLP-compatible backend with a trace query API on :3200 and '
           'rerun.',
         );
         return;
@@ -48,7 +48,7 @@ void main() {
 
       await OTel.reset();
       await OTel.initialize(
-        serviceName: 'riverpod-otel-lgtm-itest',
+        serviceName: 'riverpod-otel-itest',
         serviceVersion: '0.0.1',
         endpoint: otlpEndpoint,
       );
@@ -78,16 +78,16 @@ void main() {
       await OTel.tracerProvider().forceFlush();
       await OTel.shutdown();
 
-      final trace = await _pollTempoForTrace(
-        tempoUrl: tempoUrl,
+      final trace = await _pollBackendForTrace(
+        traceApiUrl: traceApiUrl,
         traceIdHex: traceIdHex,
         timeout: const Duration(seconds: 30),
       );
       expect(
         trace,
         isNotNull,
-        reason: 'Tempo never returned trace $traceIdHex. '
-            'Check the LGTM container logs.',
+        reason: 'Backend never returned trace $traceIdHex. '
+            "Check your backend's own logs.",
       );
 
       final spans = <Map<String, dynamic>>[];
@@ -130,11 +130,11 @@ class _Counter extends Notifier<int> {
   void increment() => state++;
 }
 
-/// Tempo readiness probe — returns 200 once the embedded backends are up.
-Future<bool> _tempoReachable(String tempoUrl) async {
+/// Trace backend readiness probe — returns 200 once the backend is up.
+Future<bool> _traceApiReachable(String traceApiUrl) async {
   try {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 1);
-    final req = await client.getUrl(Uri.parse('$tempoUrl/ready'));
+    final req = await client.getUrl(Uri.parse('$traceApiUrl/ready'));
     final resp = await req.close().timeout(const Duration(seconds: 2));
     await resp.drain<void>();
     client.close();
@@ -159,10 +159,10 @@ Future<bool> _portOpen(String endpoint) async {
   }
 }
 
-/// Polls `GET {tempoUrl}/api/traces/{trace_id}` until the trace is
+/// Polls `GET {traceApiUrl}/api/traces/{trace_id}` until the trace is
 /// returned with at least one batch, or [timeout] elapses.
-Future<Map<String, dynamic>?> _pollTempoForTrace({
-  required String tempoUrl,
+Future<Map<String, dynamic>?> _pollBackendForTrace({
+  required String traceApiUrl,
   required String traceIdHex,
   required Duration timeout,
 }) async {
@@ -172,7 +172,7 @@ Future<Map<String, dynamic>?> _pollTempoForTrace({
     while (DateTime.now().isBefore(deadline)) {
       try {
         final req = await client.getUrl(
-          Uri.parse('$tempoUrl/api/traces/$traceIdHex'),
+          Uri.parse('$traceApiUrl/api/traces/$traceIdHex'),
         );
         final resp = await req.close();
         if (resp.statusCode == 200) {

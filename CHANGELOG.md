@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0-beta.2-wip]
+## [0.2.0-wip]
+
+### Added
+
+- `example/otel_riverpod_example.dart` — a runnable, pub.dev-visible
+  example driving every observer hook against a standard OTLP
+  endpoint.
+
+### Removed
+
+- The internal `example_app/` (never shipped in the pub archive),
+  superseded by `example/`.
 
 ## [0.1.0-beta.1] - 2026-05-16
 

@@ -14,7 +14,7 @@ on the active trace:
 
 Each span carries the provider's name, runtime type, family argument
 (if any), auto-dispose flag, and the value's runtime type. Together
-they give you a Tempo timeline of your state graph that joins the
+they give you a trace timeline of your state graph that joins the
 caller's existing trace, so a UI gesture → mutation → provider
 update → HTTP call shows up as a single waterfall.
 

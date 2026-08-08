@@ -1,9 +1,9 @@
 name: otel_riverpod
-description: OpenTelemetry instrumentation for `package:riverpod`. Adds a
-  ProviderObserver that emits short-lived spans for provider add / update /
-  fail / dispose events, with semconv-style attributes so you can see your
-  state graph in Tempo.
-version: 0.1.0-beta.2-wip
+description: >-
+  OpenTelemetry instrumentation for `package:riverpod`. A ProviderObserver
+  emitting short-lived spans for provider add, update, fail and dispose, so
+  you can see your state graph.
+version: 0.2.0-wip
 repository: https://github.com/dartastic/otel_riverpod
 homepage: https://dartastic.io
 
@@ -11,8 +11,8 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  dartastic_opentelemetry: ^1.1.0-beta.4
-  dartastic_opentelemetry_api: ^1.0.0-beta.6
+  dartastic_opentelemetry: ^1.1.0-beta.12
+  dartastic_opentelemetry_api: ^1.0.0-rc.1
   riverpod: ^3.0.0
 
 dev_dependencies:
