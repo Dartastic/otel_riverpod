@@ -3,7 +3,7 @@ description: >-
   OpenTelemetry instrumentation for `package:riverpod`. A ProviderObserver
   emitting short-lived spans for provider add, update, fail and dispose, so
   you can see your state graph.
-version: 0.2.0-wip
+version: 0.2.0
 repository: https://github.com/dartastic/otel_riverpod
 homepage: https://dartastic.io
 
