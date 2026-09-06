@@ -186,6 +186,58 @@ void main() {
       );
     });
   });
+
+  // Regression: instrumentation must never be in the functional path.
+  // Before the lazy tracer, the constructor itself threw
+  // `StateError: OTel.initialize() must be called first.`, so a
+  // `ProviderContainer` / `ProviderScope` carrying the observer could
+  // not be built at all.
+  group('OTel SDK not initialized', () {
+    setUp(() async {
+      await OTel.reset();
+    });
+
+    test('the observer can be constructed', () {
+      expect(OTelRiverpodObserver.new, returnsNormally);
+    });
+
+    test('provider add / update / dispose still work', () {
+      final container = ProviderContainer(
+        observers: [OTelRiverpodObserver()],
+      );
+      addTearDown(container.dispose);
+
+      final provider = NotifierProvider<_Counter, int>(
+        _Counter.new,
+        name: 'counter',
+      );
+      expect(container.read(provider), equals(0));
+      container.read(provider.notifier).increment();
+      expect(container.read(provider), equals(1));
+    });
+
+    test('a failing provider still surfaces its error', () {
+      final container = ProviderContainer(
+        observers: [OTelRiverpodObserver()],
+      );
+      addTearDown(container.dispose);
+
+      final boom = Provider<int>(
+        (ref) => throw const FormatException('boom'),
+        name: 'boom',
+      );
+      // Riverpod 3 wraps the provider's error, so match on the message
+      // rather than the type — the point is that the failure still
+      // reaches the caller instead of being replaced by a StateError
+      // from the observer.
+      expect(
+        () => container.read(boom),
+        throwsA(
+          predicate<Object>((e) => e.toString().contains('boom')),
+        ),
+      );
+    });
+  });
 }
 
 class _Counter extends Notifier<int> {

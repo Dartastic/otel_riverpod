@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0-wip]
 
+### Fixed
+
+- `OTelRiverpodObserver` no longer requires `OTel.initialize()` to have
+  run before it is constructed. The default tracer is resolved lazily
+  on the first observed event and every callback is guarded, so a
+  `ProviderContainer` / `ProviderScope` carrying the observer always
+  builds and provider reads, updates, failures and disposals are never
+  affected by telemetry state. Previously the constructor threw
+  `StateError: OTel.initialize() must be called first.`
+
 ## [0.2.0] - 2026-08-10
 
 ### Added
