@@ -4,7 +4,10 @@
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:riverpod/riverpod.dart';
 
+import 'otel_guard.dart';
 import 'riverpod_semantics.dart';
+
+const _tracerName = 'otel_riverpod';
 
 /// OpenTelemetry instrumentation for `package:riverpod`.
 ///
@@ -48,7 +51,9 @@ final class OTelRiverpodObserver extends ProviderObserver {
   /// Creates an observer.
   ///
   /// - [tracer] — the tracer to use. Defaults to
-  ///   `OTel.tracerProvider().getTracer('otel_riverpod')`.
+  ///   `OTel.tracerProvider().getTracer('otel_riverpod')`, resolved
+  ///   lazily on the first observed event so that constructing the
+  ///   observer never depends on `OTel.initialize()` having run.
   /// - [recordValues] — when `true`, also record `toString()` of the
   ///   provider's current (and on update, previous) value. Defaults
   ///   to `false` because provider state often carries user data;
@@ -64,9 +69,23 @@ final class OTelRiverpodObserver extends ProviderObserver {
     this.recordValues = false,
     this.recordUpdates = true,
     this.valueAttributeMaxLength = 256,
-  }) : _tracer = tracer ?? OTel.tracerProvider().getTracer('otel_riverpod');
+  }) : _explicitTracer = tracer;
 
-  final Tracer _tracer;
+  final Tracer? _explicitTracer;
+  Tracer? _cachedTracer;
+
+  /// The tracer to emit on, or `null` while the OTel SDK is not
+  /// initialized.
+  ///
+  /// Resolved lazily and cached: the observer is typically constructed
+  /// in `main()` / `ProviderScope`, which may run before — or entirely
+  /// without — a successful `OTel.initialize()`. Riverpod is the app's
+  /// state graph; the observer must never be able to break it.
+  Tracer? get _tracer =>
+      _explicitTracer ??
+      (_cachedTracer ??= tryTelemetry(
+        () => OTel.tracerProvider().getTracer(_tracerName),
+      ));
 
   /// When `true`, the observer records value content (`toString()`) on
   /// add / update events. Off by default; see constructor docs.
@@ -81,9 +100,12 @@ final class OTelRiverpodObserver extends ProviderObserver {
 
   @override
   void didAddProvider(ProviderObserverContext context, Object? value) {
-    final span = _startEventSpan(context, event: 'added');
-    _attachValueAttributes(span, value: value, previousValue: null);
-    span.end();
+    tryTelemetryEffect(() {
+      final span = _startEventSpan(context, event: 'added');
+      if (span == null) return;
+      _attachValueAttributes(span, value: value, previousValue: null);
+      span.end();
+    });
   }
 
   @override
@@ -93,13 +115,16 @@ final class OTelRiverpodObserver extends ProviderObserver {
     Object? newValue,
   ) {
     if (!recordUpdates) return;
-    final span = _startEventSpan(context, event: 'updated');
-    _attachValueAttributes(
-      span,
-      value: newValue,
-      previousValue: previousValue,
-    );
-    span.end();
+    tryTelemetryEffect(() {
+      final span = _startEventSpan(context, event: 'updated');
+      if (span == null) return;
+      _attachValueAttributes(
+        span,
+        value: newValue,
+        previousValue: previousValue,
+      );
+      span.end();
+    });
   }
 
   @override
@@ -108,23 +133,30 @@ final class OTelRiverpodObserver extends ProviderObserver {
     Object error,
     StackTrace stackTrace,
   ) {
-    final span = _startEventSpan(context, event: 'failed');
-    // Per OTel spec: recordException event, THEN setStatus.
-    span.recordException(error, stackTrace: stackTrace);
-    span.setStatus(SpanStatusCode.Error, error.toString());
-    span.end();
+    tryTelemetryEffect(() {
+      final span = _startEventSpan(context, event: 'failed');
+      if (span == null) return;
+      // Per OTel spec: recordException event, THEN setStatus.
+      span
+        ..recordException(error, stackTrace: stackTrace)
+        ..setStatus(SpanStatusCode.Error, error.toString())
+        ..end();
+    });
   }
 
   @override
   void didDisposeProvider(ProviderObserverContext context) {
-    final span = _startEventSpan(context, event: 'disposed');
-    span.end();
+    tryTelemetryEffect(() {
+      _startEventSpan(context, event: 'disposed')?.end();
+    });
   }
 
-  APISpan _startEventSpan(
+  APISpan? _startEventSpan(
     ProviderObserverContext context, {
     required String event,
   }) {
+    final tracer = _tracer;
+    if (tracer == null) return null;
     final provider = context.provider;
     final name = provider.name ?? provider.runtimeType.toString();
 
@@ -152,7 +184,7 @@ final class OTelRiverpodObserver extends ProviderObserver {
       attrs[RiverpodSemantics.mutation.key] = mutation.toString();
     }
 
-    return _tracer.startSpan(
+    return tracer.startSpan(
       'provider.$event:$name',
       attributes: OTel.attributesFromMap(attrs),
     );
