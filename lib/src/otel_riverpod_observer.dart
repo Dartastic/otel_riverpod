@@ -1,7 +1,7 @@
 // Licensed under the Apache License, Version 2.0
 // Copyright 2025, Mindful Software LLC, All rights reserved.
 
-import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry_api/dartastic_opentelemetry_api.dart';
 import 'package:riverpod/riverpod.dart';
 
 import 'riverpod_semantics.dart';
@@ -65,13 +65,13 @@ final class OTelRiverpodObserver extends ProviderObserver {
   ///   value-derived attribute (`toString()` of argument / value /
   ///   previousValue). Defaults to 256.
   OTelRiverpodObserver({
-    Tracer? tracer,
+    APITracer? tracer,
     this.recordValues = false,
     this.recordUpdates = true,
     this.valueAttributeMaxLength = 256,
-  }) : _tracer = tracer ?? OTel.tracerProvider().getTracer('otel_riverpod');
+  }) : _tracer = tracer ?? OTelAPI.tracerProvider().getTracer('otel_riverpod');
 
-  final Tracer _tracer;
+  final APITracer _tracer;
 
   /// When `true`, the observer records value content (`toString()`) on
   /// add / update events. Off by default; see constructor docs.
@@ -159,7 +159,7 @@ final class OTelRiverpodObserver extends ProviderObserver {
 
     return _tracer.startSpan(
       'provider.$event:$name',
-      attributes: OTel.attributesFromMap(attrs),
+      attributes: OTelAPI.attributesFromMap(attrs),
     );
   }
 
@@ -180,7 +180,7 @@ final class OTelRiverpodObserver extends ProviderObserver {
           _clip(previousValue.toString());
     }
     if (extras.isNotEmpty) {
-      span.addAttributes(OTel.attributesFromMap(extras));
+      span.addAttributes(OTelAPI.attributesFromMap(extras));
     }
   }
 
