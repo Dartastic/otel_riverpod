@@ -76,33 +76,58 @@ runApp(
 
 ## Configuration
 
-| Constructor arg | Default | Effect |
-|---|---|---|
-| `tracer` | `OTel.tracerProvider().getTracer('otel_riverpod')` | The tracer that emits the spans. |
-| `recordValues` | `false` | When `true`, records `toString()` of provider values on `added` / `updated` events. Off by default because state often carries user data. |
-| `recordUpdates` | `true` | When `false`, suppresses `didUpdateProvider` spans entirely — useful for chatty providers in production. |
-| `valueAttributeMaxLength` | `256` | Cap on any `toString()`-derived attribute. Longer strings get clipped with `…`. |
+| Constructor arg           | Default                                            | Effect                                                                                                                                    |
+|---------------------------|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `tracer`                  | `OTel.tracerProvider().getTracer('otel_riverpod')` | The tracer that emits the spans.                                                                                                          |
+| `recordValues`            | `false`                                            | When `true`, records `toString()` of provider values on `added` / `updated` events. Off by default because state often carries user data. |
+| `recordUpdates`           | `true`                                             | When `false`, suppresses `didUpdateProvider` spans entirely — useful for chatty providers in production.                                  |
+| `valueAttributeMaxLength` | `256`                                              | Cap on any `toString()`-derived attribute. Longer strings get clipped with `…`.                                                           |
 
 ## Span shape
 
-| Attribute | Source | When set |
-|---|---|---|
-| `riverpod.provider.name` | `provider.name` or runtime type | always |
-| `riverpod.provider.type` | `provider.runtimeType` (`Provider`, `NotifierProvider`, …) | always |
-| `riverpod.provider.auto_dispose` | `provider.isAutoDispose` | always |
-| `riverpod.event` | `added` / `updated` / `failed` / `disposed` | always |
-| `riverpod.provider.family` | `provider.from?.name` | family providers |
-| `riverpod.provider.argument` | `provider.argument.toString()` (clipped) | family providers |
-| `riverpod.value.type` | `value.runtimeType` | when value is non-null |
-| `riverpod.value` | `value.toString()` (clipped) | only when `recordValues: true` |
-| `riverpod.previous_value` | `previousValue.toString()` (clipped) | `updated` events + `recordValues: true` |
-| `riverpod.mutation` | `ProviderObserverContext.mutation.toString()` | when triggered by a `@mutation` |
+| Attribute                        | Source                                                     | When set                                |
+|----------------------------------|------------------------------------------------------------|-----------------------------------------|
+| `riverpod.provider.name`         | `provider.name` or runtime type                            | always                                  |
+| `riverpod.provider.type`         | `provider.runtimeType` (`Provider`, `NotifierProvider`, …) | always                                  |
+| `riverpod.provider.auto_dispose` | `provider.isAutoDispose`                                   | always                                  |
+| `riverpod.event`                 | `added` / `updated` / `failed` / `disposed`                | always                                  |
+| `riverpod.provider.family`       | `provider.from?.name`                                      | family providers                        |
+| `riverpod.provider.argument`     | `provider.argument.toString()` (clipped)                   | family providers                        |
+| `riverpod.value.type`            | `value.runtimeType`                                        | when value is non-null                  |
+| `riverpod.value`                 | `value.toString()` (clipped)                               | only when `recordValues: true`          |
+| `riverpod.previous_value`        | `previousValue.toString()` (clipped)                       | `updated` events + `recordValues: true` |
+| `riverpod.mutation`              | `ProviderObserverContext.mutation.toString()`              | when triggered by a `@mutation`         |
 
 - **Span name** is `provider.<event>:<name>`, e.g.
   `provider.updated:counter`.
 - **Span kind** is the default (`INTERNAL`).
 - **Span status** is `Error` only on `providerDidFail`; everything
   else stays unset.
+
+## Context propagation
+
+Every span takes its parent from the OpenTelemetry context that is
+current when the observer hook fires. Whether that is the context of
+the code that caused the change depends on how Riverpod runs it:
+
+| What happens                                                                | Parent of the span (and of spans started there) |
+|-----------------------------------------------------------------------------|-------------------------------------------------|
+| A notifier method called from your code (`ref.read(p.notifier).go()`)       | The caller's span                               |
+| `ref.listen` / `container.listen` callbacks                                 | The caller's span                               |
+| A dependent provider rebuilt by `ProviderContainer`'s scheduler (pure Dart) | The caller's span                               |
+| A dependent provider rebuilt by `ProviderScope` on the next frame (Flutter) | **Not** the caller's span                       |
+| A provider built lazily on first read                                       | The reader's span                               |
+
+In Flutter, `ProviderScope` flushes pending rebuilds during the next
+frame, outside the zone that invalidated them. Riverpod gives
+observers no record of which update caused a rebuild, so this package
+does not guess one. Riverpod's own `ProviderObserverContext.mutation`
+is null for those rebuilds for the same reason.
+
+If work caused by a user action should nest under that action's span
+(a network call after a tap, say), start it from the notifier method
+the action calls, not from the body of a provider that depends on the
+notifier.
 
 ## Caveats
 
