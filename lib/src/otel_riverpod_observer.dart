@@ -44,6 +44,11 @@ import 'riverpod_semantics.dart';
 ///
 /// Spans inherit the active context, so a provider event that fires
 /// inside a user span (e.g. a route-change span) joins that trace.
+/// Notifier method calls and listener callbacks run in the caller's
+/// context. In Flutter, dependents that `ProviderScope` rebuilds on the
+/// next frame do not: Riverpod runs that flush outside the zone that
+/// invalidated them and tells observers nothing about the cause. See
+/// the README's "Context propagation" section.
 final class OTelRiverpodObserver extends ProviderObserver {
   /// Creates an observer.
   ///
